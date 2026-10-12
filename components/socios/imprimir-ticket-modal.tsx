@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { X, Printer, AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
 import { Button } from "@/ui/button"
-import { Dialog, DialogContent } from "@/ui/dialog"
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/ui/dialog"
 import { Alert, AlertDescription } from "@/ui/alert"
 import { getPrinterInstance, formatTicketData, isWebUSBSupported } from "@/lib/services/thermal-printer"
 import type { CotizacionResponse } from "@/lib/types/socios"
@@ -216,14 +216,18 @@ export function ImprimirTicketModal({
   return (
     <Dialog open={open} onOpenChange={handleCerrar}>
       <DialogContent className="sm:max-w-[500px] [&>button]:hidden">
+        <DialogDescription className="sr-only">
+          Revisa los datos del socio y el estado de la impresora para imprimir el ticket.
+        </DialogDescription>
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b">
           <div className="flex items-center gap-2">
             <Printer className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-bold">Imprimir Ticket</h2>
+            <DialogTitle className="text-xl font-bold">Imprimir Ticket</DialogTitle>
           </div>
           <button
             onClick={handleCerrar}
+            aria-label="Cerrar impresión de ticket"
             disabled={imprimiendo}
             className="text-muted-foreground hover:text-foreground disabled:opacity-50"
           >

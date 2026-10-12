@@ -1,4 +1,5 @@
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api'
+import { apiGet, apiPost, apiPut, apiDelete, apiDownload } from '@/lib/api'
+import { notificarCambioBiometrico } from '@/lib/motor-huella'
 import { getMetodosPago as getMetodosPagoConfiguracion } from '@/lib/services/metodos-pago'
 import type {
   Socio,
@@ -100,6 +101,42 @@ export class SociosService {
     }
   }
 
+  static async exportarSocios(filtros: {
+    busqueda?: string
+    vigencia?: string
+    membresia?: string
+    genero?: string
+    contratoFirma?: string
+    contratoVigencia?: string
+    fechaDesde?: string
+    fechaHasta?: string
+  } = {}): Promise<void> {
+    const params = new URLSearchParams()
+
+    if (filtros.busqueda?.trim()) params.set('search', filtros.busqueda.trim())
+    if (filtros.vigencia && filtros.vigencia !== 'todos') params.set('vigencia', filtros.vigencia)
+    if (filtros.membresia && filtros.membresia !== 'todos') params.set('membresia', filtros.membresia)
+    if (filtros.genero && filtros.genero !== 'todos') params.set('genero', filtros.genero)
+    if (filtros.contratoFirma && filtros.contratoFirma !== 'todos') params.set('contrato_firma', filtros.contratoFirma)
+    if (filtros.contratoVigencia && filtros.contratoVigencia !== 'todos') params.set('contrato_vigencia', filtros.contratoVigencia)
+    if (filtros.fechaDesde) params.set('fecha_desde', filtros.fechaDesde)
+    if (filtros.fechaHasta) params.set('fecha_hasta', filtros.fechaHasta)
+
+    const query = params.toString()
+    const { blob, filename } = await apiDownload(`/socios/exportar${query ? `?${query}` : ''}`, {
+      timeout: 30000,
+    })
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
   /**
    * Obtener un socio por ID
    */
@@ -107,8 +144,6 @@ export class SociosService {
     console.log(`🔄 GET /api/socios/${id} - Obteniendo socio`)
     
     const response = await apiGet<SocioResponse>(`/socios/${id}`)
-    console.log('✅ Respuesta API cruda:', response)
-    console.log('📋 Datos del socio (response.data):', response.data)
     console.log('🏷️ Campo plan_id en API:', {
       plan_id: response.data.plan_id,
       tipo: typeof response.data.plan_id,
@@ -158,9 +193,9 @@ export class SociosService {
    */
   static async create(data: CreateSocioRequest): Promise<CreateSocioResponse['data']> {
     console.log('🆕 POST /api/socios - Creando nuevo socio')
-    console.log('📤 Payload completo:', data)
     
     const response = await apiPost<CreateSocioResponse>('/socios', data)
+    // The registration form awaits the direct push to the local reader after saving.
     console.log('✅ Socio creado exitosamente:', response)
     
     if (!response.data) {
@@ -175,10 +210,9 @@ export class SociosService {
    */
   static async update(id: number, data: Partial<CreateSocioRequest>): Promise<Socio> {
     console.log(`✏️ PUT /api/socios/${id} - Actualizando socio`)
-    console.log('📤 Datos a actualizar:', data)
     
     const response = await apiPut<SocioResponse>(`/socios/${id}`, data)
-    console.log('✅ Respuesta del servidor:', response)
+    // The edit form awaits the direct push when a fingerprint is changed.
     
     // Si el backend devuelve solo { message: "..." } sin data, recargar el socio
     if (!response.data) {
@@ -196,6 +230,7 @@ export class SociosService {
     console.log(`❌ DELETE /api/socios/${id} - Eliminando socio`)
     
     await apiDelete(`/socios/${id}`)
+    // The members page awaits the direct push after this deletion.
     console.log('✅ Socio eliminado exitosamente')
   }
 
@@ -207,6 +242,7 @@ export class SociosService {
     console.log('📤 Nuevo estado:', estado)
     
     const response = await apiPut<SocioResponse>(`/socios/${id}/estado`, { estado })
+    notificarCambioBiometrico()
     console.log('✅ Estado actualizado:', response)
     
     if (!response.data) {

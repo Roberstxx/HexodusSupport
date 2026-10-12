@@ -19,6 +19,7 @@ export interface ConfiguracionGimnasio {
   gimnasioDomicilio: string
   gimnasioTelefono: string
   gimnasioRFC: string
+  mostrarRFCEnTicket: boolean
   gimnasioLogo: string
   ticketFooter: string
   ticketMensajeAgradecimiento: string
@@ -29,6 +30,7 @@ export interface ConfiguracionSistemaData extends ConfiguracionApariencia {
   gimnasioDomicilio: string
   gimnasioTelefono: string
   gimnasioRFC: string
+  mostrarRFCEnTicket: boolean
   gimnasioLogo: string | null
   ticketFooter: string
   ticketMensajeAgradecimiento: string
@@ -56,6 +58,7 @@ const DEFAULT_CONFIG_SISTEMA: ConfiguracionSistemaData = {
   gimnasioDomicilio: 'Av. Principal #123, Col. Centro, CP 12345',
   gimnasioTelefono: '+52 123 456 7890',
   gimnasioRFC: 'XAXX010101000',
+  mostrarRFCEnTicket: true,
   gimnasioLogo: null,
   ticketFooter: '¡Gracias por tu visita!',
   ticketMensajeAgradecimiento: 'Te esperamos pronto',
@@ -77,6 +80,7 @@ function normalizarConfiguracion(data?: Partial<ConfiguracionSistemaData>): Conf
     gimnasioDomicilio: data?.gimnasioDomicilio || DEFAULT_CONFIG_SISTEMA.gimnasioDomicilio,
     gimnasioTelefono: data?.gimnasioTelefono || DEFAULT_CONFIG_SISTEMA.gimnasioTelefono,
     gimnasioRFC: data?.gimnasioRFC || DEFAULT_CONFIG_SISTEMA.gimnasioRFC,
+    mostrarRFCEnTicket: data?.mostrarRFCEnTicket ?? DEFAULT_CONFIG_SISTEMA.mostrarRFCEnTicket,
     gimnasioLogo: data?.gimnasioLogo ?? DEFAULT_CONFIG_SISTEMA.gimnasioLogo,
     ticketFooter: data?.ticketFooter || DEFAULT_CONFIG_SISTEMA.ticketFooter,
     ticketMensajeAgradecimiento:
@@ -120,6 +124,8 @@ function validarBase64Logo(campo: 'logoSistema' | 'gimnasioLogo', value?: string
 export class ConfiguracionService {
   /**
    * GET /configuracion/sistema
+   * Lectura administrativa del módulo de configuración.
+   * Requiere permiso configuracion.ver en backend.
    */
   static async obtenerConfiguracionUnificada(): Promise<ConfiguracionSistemaResponse> {
     try {
@@ -134,10 +140,41 @@ export class ConfiguracionService {
   }
 
   /**
-   * Compatibilidad con consumidores que solo necesitan datos de ticket/gimnasio.
+   * GET /configuracion/sistema/runtime
+   * Lectura global para tema, logos y datos de ticket.
+   * Requiere sesión, pero no permiso de administración de configuración.
+   */
+  static async obtenerConfiguracionRuntimeUnificada(): Promise<ConfiguracionSistemaResponse> {
+    try {
+      const response = await apiGet<ConfiguracionSistemaResponse>('/configuracion/sistema/runtime')
+      return {
+        ...response,
+        data: normalizarConfiguracion(response.data),
+      }
+    } catch (error) {
+      throw mapearErrorConfiguracion(error, 'No se pudo obtener la configuración global del sistema')
+    }
+  }
+
+  /**
+   * Compatibilidad con consumidores administrativos que solo necesitan datos de ticket/gimnasio.
    */
   static async obtenerConfiguracion(): Promise<ConfiguracionResponse> {
     const response = await this.obtenerConfiguracionUnificada()
+    return this.mapearConfiguracionGimnasio(response)
+  }
+
+  /**
+   * Datos de ticket/gimnasio disponibles para cualquier usuario autenticado.
+   */
+  static async obtenerConfiguracionRuntime(): Promise<ConfiguracionResponse> {
+    const response = await this.obtenerConfiguracionRuntimeUnificada()
+    return this.mapearConfiguracionGimnasio(response)
+  }
+
+  private static mapearConfiguracionGimnasio(
+    response: ConfiguracionSistemaResponse
+  ): ConfiguracionResponse {
     const data = response.data
 
     return {
@@ -147,6 +184,7 @@ export class ConfiguracionService {
         gimnasioDomicilio: data.gimnasioDomicilio,
         gimnasioTelefono: data.gimnasioTelefono,
         gimnasioRFC: data.gimnasioRFC,
+        mostrarRFCEnTicket: data.mostrarRFCEnTicket,
         gimnasioLogo: data.gimnasioLogo || '',
         ticketFooter: data.ticketFooter,
         ticketMensajeAgradecimiento: data.ticketMensajeAgradecimiento,
@@ -232,6 +270,7 @@ export class ConfiguracionService {
         gimnasioDomicilio: data.gimnasioDomicilio,
         gimnasioTelefono: data.gimnasioTelefono,
         gimnasioRFC: data.gimnasioRFC,
+        mostrarRFCEnTicket: data.mostrarRFCEnTicket,
         gimnasioLogo: data.gimnasioLogo || '',
         ticketFooter: data.ticketFooter,
         ticketMensajeAgradecimiento: data.ticketMensajeAgradecimiento,
@@ -332,6 +371,7 @@ export class ConfiguracionService {
         gimnasioDomicilio: data.gimnasioDomicilio,
         gimnasioTelefono: data.gimnasioTelefono,
         gimnasioRFC: data.gimnasioRFC,
+        mostrarRFCEnTicket: data.mostrarRFCEnTicket,
         gimnasioLogo: data.gimnasioLogo || '',
         ticketFooter: data.ticketFooter,
         ticketMensajeAgradecimiento: data.ticketMensajeAgradecimiento,
