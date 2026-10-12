@@ -8,7 +8,7 @@ import {
 import { SociosService } from "@/lib/services/socios"
 import { MembresiasService } from "@/lib/services/membresias"
 import { AuthService } from "@/lib/auth"
-import { sincronizarCacheMotorHuella } from "@/lib/motor-huella"
+import { sincronizarCacheMotorHuella, notificarCambioBiometrico } from "@/lib/motor-huella"
 import { CheckoutSocioModal } from "./checkout-socio-modal"
 import { ImprimirTicketModal } from "./imprimir-ticket-modal"
 import { CapturaFacialModal } from "./captura-facial-modal"
@@ -83,6 +83,7 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
   const [fotoPerfilUrl, setFotoPerfilUrl] = useState("")
   const [faceEncoding, setFaceEncoding] = useState<number[]>([])
   const [fingerprintTemplate, setFingerprintTemplate] = useState("")
+  const [enrollmentProof, setEnrollmentProof] = useState<string | undefined>()
   const [bioRostro, setBioRostro] = useState(false)
   const [bioHuella, setBioHuella] = useState(false)
   
@@ -237,7 +238,9 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
           setBioRostro(socioCompleto.bioRostro || false)
           setBioHuella(socioCompleto.bioHuella || false)
           setFaceEncoding(socioCompleto.faceEncoding || [])
-          setFingerprintTemplate(socioCompleto.fingerprintTemplate || "")
+          // Existing templates are never re-submitted as a new enrollment.
+          setFingerprintTemplate("")
+          setEnrollmentProof(undefined)
         } catch (error: any) {
           console.error('❌ Error cargando datos del socio:', error)
           toast({
@@ -275,6 +278,7 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
       setFotoPerfilUrl("")
       setFaceEncoding([])
       setFingerprintTemplate("")
+      setEnrollmentProof(undefined)
       setCotizacion(null)
       setShowCheckout(false)
       setDatosTemporales(null)
@@ -306,20 +310,27 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
 
   if (!open) return null
 
-  const sincronizarMotorSiHayHuella = async (template?: string) => {
-    if (!template) return
+  const sincronizarMotorSiHayHuella = async (template?: string | null) => {
+    if (!template) return null
 
     const token = AuthService.getToken()
-    if (!token) return
+    if (!token) {
+      toast({ title: "Socio guardado, pero falta sincronizar", description: "La sesión expiró. Vuelve a entrar y actualiza el lector." })
+      notificarCambioBiometrico()
+      return false
+    }
 
     try {
-      await sincronizarCacheMotorHuella(token)
+      await sincronizarCacheMotorHuella(token, { scope: "enrollment", codigoSocio: socio?.codigoSocio })
+      return true
     } catch (error: any) {
+      notificarCambioBiometrico()
       console.error("Error sincronizando cache de huellas:", error)
       toast({
         title: "Socio guardado, pero falta sincronizar",
         description: error?.message || "No se pudo actualizar la cache del lector biometrico.",
       })
+      return false
     }
   }
 
@@ -377,6 +388,7 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
         foto_perfil_url: fotoPerfilUrl || undefined,
         face_encoding: faceEncoding.length > 0 ? faceEncoding : undefined,
         fingerprint_template: fingerprintTemplate || undefined,
+        enrollment_proof: enrollmentProof,
       },
       membresia: {
         plan_id: membresiaId,
@@ -438,6 +450,7 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
 
       if (fingerprintTemplate) {
         biometriaActualizada.fingerprint_template = fingerprintTemplate
+        biometriaActualizada.enrollment_proof = enrollmentProof
       }
 
       // Construir solo los campos modificados
@@ -504,11 +517,11 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
       }
       
       await SociosService.update(socio.id, datosActualizados)
-      await sincronizarMotorSiHayHuella(fingerprintTemplate)
+      const lectorListo = await sincronizarMotorSiHayHuella(fingerprintTemplate)
       
       toast({
         title: "✅ Socio actualizado",
-        description: `Los datos de ${nombre} han sido actualizados correctamente.`,
+        description: `Los datos de ${nombre} han sido actualizados correctamente.${lectorListo === false ? " Falta actualizar el lector; no vuelvas a guardar el socio." : lectorListo === true ? " La huella ya está disponible en el lector." : ""}`,
       })
       
       onClose()
@@ -517,7 +530,7 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
       console.error("❌ Error al actualizar socio:", error)
       toast({
         title: "Error al actualizar",
-        description: error.message || "No se pudo actualizar el socio",
+        description: fingerprintTemplate && error.status === 409 ? "Las huellas cambiaron o la captura caducó. Captura nuevamente la huella antes de guardar." : error.message || "No se pudo actualizar el socio",
         variant: "destructive",
       })
     } finally {
@@ -567,11 +580,11 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
 
       console.log('📤 Enviando registro con pago confirmado', datosFinales.membresia)
       const response = await SociosService.create(datosFinales)
-      await sincronizarMotorSiHayHuella(datosFinales.biometria?.fingerprint_template)
+      const lectorListo = await sincronizarMotorSiHayHuella(datosFinales.biometria?.fingerprint_template)
 
       toast({
         title: "¡Socio registrado!",
-        description: `${nombre} ha sido inscrito exitosamente y el pago fue registrado.`,
+        description: `${nombre} ha sido inscrito exitosamente y el pago fue registrado.${lectorListo === false ? " Falta actualizar el lector; no vuelvas a inscribir al socio." : lectorListo === true ? " La huella ya está disponible en el lector." : ""}`,
       })
 
       // Guardar datos para impresión
@@ -635,11 +648,11 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
       console.log('   metodo_pago_id:', 'undefined (no se envía)')
       
       await SociosService.create(datosFinales)
-      await sincronizarMotorSiHayHuella(datosFinales.biometria.fingerprint_template)
+      const lectorListo = await sincronizarMotorSiHayHuella(datosFinales.biometria.fingerprint_template)
       
       toast({
         title: "¡Socio inscrito!",
-        description: `${nombre} ha sido inscrito. El pago queda pendiente.`,
+        description: `${nombre} ha sido inscrito. El pago queda pendiente.${lectorListo === false ? " Falta actualizar el lector; no vuelvas a inscribir al socio." : lectorListo === true ? " La huella ya está disponible; el acceso depende de su membresía." : ""}`,
       })
       
       // STEP 5: Limpiar y cerrar
@@ -749,7 +762,8 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
     setShowHuellaModal(true)
   }
 
-  const handleCapturaHuellaCompleta = (template: string) => {
+  const handleCapturaHuellaCompleta = (template: string, proof?: string) => {
+    setEnrollmentProof(proof)
     console.log('✅ Huella capturada exitosamente')
     console.log('📝 Template length:', template.length)
     
@@ -759,7 +773,7 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
     
     toast({
       title: "✓ Huella capturada",
-      description: "La huella dactilar ha sido registrada correctamente",
+      description: "La captura está lista. Guarda el socio para completar su registro.",
     })
   }
 
@@ -1220,6 +1234,7 @@ export function SocioModal({ open, onClose, onSuccess, socio }: SocioModalProps)
         open={showHuellaModal}
         onClose={() => setShowHuellaModal(false)}
         onCapture={handleCapturaHuellaCompleta}
+        codigoSocio={socio?.codigoSocio}
       />
 
       {/* Checkout Modal (STEP 3) */}

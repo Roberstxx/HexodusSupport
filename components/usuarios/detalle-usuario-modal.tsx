@@ -81,7 +81,7 @@ export function DetalleUsuarioModal({ usuario, open, displayId, onClose }: Detal
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Rol</p>
                 <span 
                   className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                  style={{ backgroundColor: usuario.rol.color }}
+                  style={{ backgroundColor: usuario.rol.color ?? undefined }}
                 >
                   {usuario.rol.nombre}
                 </span>

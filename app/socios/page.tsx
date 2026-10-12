@@ -12,6 +12,8 @@ import { EliminarSocioModal } from "@/components/socios/eliminar-socio-modal"
 import { CobrarMembresiaModal } from "@/components/socios/cobrar-membresia-modal"
 import { RenovarMembresiaModal } from "@/components/socios/renovar-membresia-modal"
 import { SociosService } from "@/lib/services/socios"
+import { AuthService } from "@/lib/auth"
+import { sincronizarCacheMotorHuella, notificarCambioBiometrico } from "@/lib/motor-huella"
 import { toast } from "@/hooks/use-toast"
 import type { DashboardStatsSocios, Socio } from "@/lib/types/socios"
 import { extractYmd } from "@/lib/timezone"
@@ -34,6 +36,8 @@ export default function SociosPage() {
   const [cargando, setCargando] = useState(!useMockData)
   const [cargandoMas, setCargandoMas] = useState(false)
   const [dashboardStats, setDashboardStats] = useState<DashboardStatsSocios | null>(null)
+  const [exportando, setExportando] = useState(false)
+  const [puedeExportar, setPuedeExportar] = useState(false)
   const loadIdRef = useRef(0)
 
   // Filters
@@ -133,6 +137,10 @@ export default function SociosPage() {
   useEffect(() => {
     cargarSocios()
   }, [cargarSocios])
+
+  useEffect(() => {
+    setPuedeExportar(AuthService.hasPermission("socios", "exportar"))
+  }, [])
 
   const normalizarTexto = (valor: string | undefined | null): string => {
     if (!valor) return ""
@@ -349,6 +357,49 @@ export default function SociosPage() {
     setModalOpen(true)
   }, [])
 
+  const handleExportar = useCallback(async () => {
+    if (useMockData || exportando) return
+
+    setExportando(true)
+    try {
+      await SociosService.exportarSocios({
+        busqueda,
+        vigencia: vigenciaFiltro,
+        membresia: membresiaFiltro,
+        genero: generoFiltro,
+        contratoFirma: contratoFirmaFiltro,
+        contratoVigencia: contratoVigenciaFiltro,
+        fechaDesde,
+        fechaHasta,
+      })
+
+      toast({
+        title: "Exportación lista",
+        description: "Se descargó el Excel de socios y membresías.",
+      })
+    } catch (error: any) {
+      console.error("Error exportando socios:", error)
+      toast({
+        title: "No se pudo exportar",
+        description: error.message || "Intenta nuevamente en unos segundos.",
+        variant: "destructive",
+      })
+    } finally {
+      setExportando(false)
+    }
+  }, [
+    busqueda,
+    vigenciaFiltro,
+    membresiaFiltro,
+    generoFiltro,
+    contratoFirmaFiltro,
+    contratoVigenciaFiltro,
+    fechaDesde,
+    fechaHasta,
+    exportando,
+    toast,
+  ])
+
   const handleEditar = useCallback((s: Socio | SocioMock) => {
     console.log('📝 Editando socio:', s)
     setEditandoSocio(s as Socio)
@@ -385,6 +436,12 @@ export default function SociosPage() {
         })
         // Recargar lista
         cargarSocios()
+        try {
+          await sincronizarCacheMotorHuella()
+        } catch {
+          notificarCambioBiometrico()
+          toast({ title: "Socio eliminado; lector pendiente de actualizar", description: "La baja ya se guardó. Se avisó al kiosco abierto para actualizar el lector; el servidor denegará el acceso del socio eliminado. Si sigue pendiente, usa Sincronizar." })
+        }
       }
     } catch (error: any) {
       console.error('Error eliminando socio:', error)
@@ -428,13 +485,13 @@ export default function SociosPage() {
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar activePage="socios" />
 
-      <main className="flex-1 flex flex-col min-h-0">
+      <main className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
         <SociosHeader />
 
-        <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 md:py-6 space-y-5">
+        <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-3 py-5 md:px-4 xl:px-6 xl:py-6 space-y-5">
           {cargando && socios.length === 0 ? (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 xl:gap-4">
                 {Array.from({ length: 4 }).map((_, index) => (
                   <div
                     key={index}
@@ -495,6 +552,9 @@ export default function SociosPage() {
                 onFechaHastaChange={setFechaHasta}
                 onLimpiar={handleLimpiar}
                 onNuevoSocio={handleNuevoSocio}
+                onExportar={handleExportar}
+                exportando={exportando}
+                canExportar={puedeExportar}
                 totalFiltrados={sociosFiltrados.length}
                 totalSocios={socios.length}
               />

@@ -1,10 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   images: {
     unoptimized: true,
+  },
+  compiler: {
+    removeConsole: {
+      exclude: ["error", "warn"],
+    },
   },
   // Configuración de Turbopack (Next.js 16+)
   turbopack: {

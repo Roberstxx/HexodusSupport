@@ -30,8 +30,12 @@ import type { RegistroAcceso } from "@/lib/asistencia-data"
 import { formatHora } from "@/lib/asistencia-data"
 import {
   exportarRegistrosAsistencia,
-  type FormatoExportacionAsistencias,
 } from "@/lib/export-asistencias"
+
+export interface FiltrosExportacionHistorial {
+  estado?: "permitido" | "denegado"
+  search?: string
+}
 
 interface Props {
   registros: RegistroAcceso[]
@@ -58,11 +62,13 @@ interface Props {
   onCambiarFechaFin?: (fecha: string) => void
   onAplicarFiltros?: () => void
   onLimpiarFiltros?: () => void
+  onExportarCompleto?: (filtros: FiltrosExportacionHistorial) => Promise<void>
+  exportando?: boolean
 }
 
-export function HistorialRegistros({ 
-  registros, 
-  onLimpiar, 
+export function HistorialRegistros({
+  registros,
+  onLimpiar,
   loading = false,
   error = null,
   onRecargar,
@@ -83,11 +89,12 @@ export function HistorialRegistros({
   onCambiarFechaFin,
   onAplicarFiltros,
   onLimpiarFiltros,
+  onExportarCompleto,
+  exportando = false,
 }: Props) {
   const [filtroTipo, setFiltroTipo] = useState("todos")
   const [busqueda, setBusqueda] = useState("")
   const [mostrarFiltros, setMostrarFiltros] = useState(false)
-  const [formatoExportacion, setFormatoExportacion] = useState<FormatoExportacionAsistencias>("XLSX")
 
   // Calcular si hay filtros activos
   const hayFiltrosActivos = filtroMetodo !== "todos" || fechaInicio || fechaFin
@@ -117,7 +124,7 @@ export function HistorialRegistros({
       style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.2)" }}
     >
       {/* Header */}
-      <div className="p-4 pb-3 border-b border-border space-y-3">
+      <div className="space-y-3 border-b border-border p-3 pb-3 md:p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center gap-3 flex-wrap">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -145,13 +152,13 @@ export function HistorialRegistros({
             {/* Selector de registros por página en header */}
             {onCambiarRegistrosPorPagina && totalRegistros && totalRegistros > 10 && (
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground whitespace-nowrap">Ver:</span>
+                <span className="whitespace-nowrap text-muted-foreground">Ver:</span>
                 <Select
                   value={String(registrosPorPagina)}
                   onValueChange={(value) => onCambiarRegistrosPorPagina(Number(value))}
                   disabled={loading}
                 >
-                  <SelectTrigger className="h-7 w-[70px] text-xs">
+                  <SelectTrigger className="h-8 w-[70px] text-xs md:h-7">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -167,7 +174,7 @@ export function HistorialRegistros({
               <button
                 onClick={onRecargar}
                 disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-foreground border border-border hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:px-3"
                 title="Recargar datos"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -177,41 +184,37 @@ export function HistorialRegistros({
         </div>
 
         {canExportar && (
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 rounded-lg border border-border bg-muted/20 p-2">
-            <p className="text-[11px] text-muted-foreground px-1">
-              Exporta en el formato adecuado para compartir o imprimir.
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-2.5 lg:flex-row lg:items-center lg:justify-between">
+            <p className="hidden px-1 text-[11px] text-muted-foreground sm:block">
+              Exporta todos los registros que coinciden con los filtros aplicados.
             </p>
 
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <Select
-                value={formatoExportacion}
-                onValueChange={(value) => setFormatoExportacion(value as FormatoExportacionAsistencias)}
-                disabled={loading}
-              >
-                <SelectTrigger className="h-8 w-full sm:w-[230px] text-xs bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="XLSX">Excel (.xlsx) - Recomendado</SelectItem>
-                  <SelectItem value="PDF">PDF (imprimible)</SelectItem>
-                  <SelectItem value="CSV">CSV (avanzado)</SelectItem>
-                </SelectContent>
-              </Select>
-
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
               <button
-                onClick={() =>
+                onClick={() => {
+                  if (onExportarCompleto) {
+                    void onExportarCompleto({
+                      estado: filtroTipo === "todos" ? undefined : filtroTipo as "permitido" | "denegado",
+                      search: busqueda.trim() || undefined,
+                    })
+                    return
+                  }
+
                   exportarRegistrosAsistencia({
                     registros: registrosFiltrados,
-                    formato: formatoExportacion,
+                    formato: "XLSX",
                   })
+                }}
+                disabled={
+                  loading ||
+                  exportando ||
+                  (onExportarCompleto ? !totalRegistros : registrosFiltrados.length === 0)
                 }
-                disabled={loading || registrosFiltrados.length === 0}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-w-[142px]"
+                aria-busy={exportando}
+                className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:min-w-[142px] sm:py-1.5 sm:text-xs"
               >
-                <Download className="h-3.5 w-3.5" />
-                {formatoExportacion === "XLSX" && "Exportar Excel"}
-                {formatoExportacion === "PDF" && "Exportar PDF"}
-                {formatoExportacion === "CSV" && "Exportar CSV"}
+                {exportando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                {exportando ? "Generando..." : "Exportar Excel"}
               </button>
             </div>
           </div>
@@ -219,11 +222,11 @@ export function HistorialRegistros({
       </div>
 
       {/* Filters */}
-      <div className="px-4 py-3 space-y-3 border-b border-border/50">
+      <div className="space-y-3 border-b border-border/50 px-3 py-3 md:px-4">
         {/* Fila principal de filtros */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center">
           <Select value={filtroTipo} onValueChange={setFiltroTipo}>
-            <SelectTrigger className="w-[180px] h-9 text-xs bg-muted border-border">
+            <SelectTrigger className="h-11 w-full border-border bg-muted text-sm sm:h-9 sm:w-[180px] sm:text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -232,13 +235,13 @@ export function HistorialRegistros({
               <SelectItem value="denegado">Accesos denegados</SelectItem>
             </SelectContent>
           </Select>
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative min-w-0 flex-1 sm:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               placeholder="Buscar socio..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              className="pl-9 h-9 text-xs bg-muted border-border"
+              className="h-11 bg-muted pl-9 text-sm sm:h-9 sm:text-xs"
             />
           </div>
           {mostrarFiltrosAvanzados && (
@@ -246,7 +249,7 @@ export function HistorialRegistros({
               size="sm"
               variant={mostrarFiltros ? "default" : "outline"}
               onClick={() => setMostrarFiltros(!mostrarFiltros)}
-              className="h-9 text-xs gap-2"
+              className="h-11 gap-2 text-sm sm:h-9 sm:text-xs"
             >
               <Filter className="h-3.5 w-3.5" />
               Filtros avanzados
@@ -287,8 +290,8 @@ export function HistorialRegistros({
                   <label className="text-[11px] font-medium text-muted-foreground">
                     Método de registro
                   </label>
-                  <Select 
-                    value={filtroMetodo || "todos"} 
+                  <Select
+                    value={filtroMetodo || "todos"}
                     onValueChange={onCambiarFiltroMetodo}
                   >
                     <SelectTrigger className="h-9 text-xs bg-background">
@@ -367,7 +370,7 @@ export function HistorialRegistros({
       </div>
 
       {/* Records list */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2" style={{ maxHeight: "520px" }}>
+      <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-4 md:px-4" style={{ maxHeight: "520px" }}>
         {error && (
           <div className="rounded-lg border border-destructive bg-destructive/10 p-4 mb-4">
             <div className="flex items-center gap-2 text-sm text-destructive">
@@ -416,13 +419,13 @@ export function HistorialRegistros({
         {registrosFiltrados.length > 0 && registrosFiltrados.map((registro) => (
           <div
             key={registro.id}
-            className={`flex items-center justify-between p-3 rounded-lg bg-muted/40 border-l-3 transition-all hover:bg-muted/70 ${
+            className={`flex items-start justify-between gap-3 rounded-lg bg-muted/40 p-3 border-l-3 transition-all hover:bg-muted/70 md:items-center ${
               registro.tipo === "permitido"
                 ? "border-l-success"
                 : "border-l-destructive"
             }`}
           >
-            <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               {/* Avatar con foto de perfil */}
               <Avatar className="h-9 w-9 border-2 border-border transition-colors">
                 <AvatarImage src={registro.fotoUrl || undefined} alt={registro.nombreSocio} />
@@ -441,17 +444,17 @@ export function HistorialRegistros({
                 <p className="text-[11px] text-muted-foreground truncate">{registro.motivo}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
               <div className="text-right">
                 <p className="text-xs text-foreground">{formatHora(registro.timestamp)}</p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="max-w-[7rem] truncate text-[11px] text-muted-foreground">
                   {registro.confianza === "N/A" ? "N/A" : `${registro.confianza}% confianza`}
                 </p>
               </div>
               {onVerHistorialSocio && registro.socioDbId && (
                 <button
                   onClick={() => onVerHistorialSocio(String(registro.socioDbId))}
-                  className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                  className="rounded-md p-1.5 transition-colors hover:bg-muted"
                   title="Ver historial del socio"
                 >
                   <User className="h-3.5 w-3.5 text-muted-foreground" />
@@ -464,17 +467,17 @@ export function HistorialRegistros({
 
       {/* Paginación simplificada */}
       {paginaActual && totalPaginas && onCambiarPagina && totalPaginas > 1 && (
-        <div className="px-4 py-3 border-t border-border/50 bg-muted/20">
+        <div className="border-t border-border/50 bg-muted/20 px-3 py-3 md:px-4">
           <div className="flex items-center justify-center">
             {/* Controles de paginación */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex w-full items-center justify-between gap-1.5 sm:w-auto sm:justify-center">
               {/* Primera página */}
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => onCambiarPagina(1)}
                 disabled={paginaActual <= 1 || loading}
-                className="h-8 w-8 p-0"
+                className="h-9 w-9 p-0 sm:h-8 sm:w-8"
                 title="Primera página"
               >
                 <span className="text-xs">‹‹</span>
@@ -486,11 +489,11 @@ export function HistorialRegistros({
                 variant="outline"
                 onClick={() => onCambiarPagina(paginaActual - 1)}
                 disabled={paginaActual <= 1 || loading}
-                className="h-8 px-3"
+                className="h-9 px-3 sm:h-8"
               >
                 <span className="text-xs">‹ Anterior</span>
               </Button>
-              
+
               {/* Números de página */}
               <div className="hidden md:flex items-center gap-1">
                 {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
@@ -504,7 +507,7 @@ export function HistorialRegistros({
                   } else {
                     pageNum = paginaActual - 2 + i
                   }
-                  
+
                   return (
                     <Button
                       key={pageNum}
@@ -521,19 +524,19 @@ export function HistorialRegistros({
               </div>
 
               {/* Indicador móvil */}
-              <div className="flex md:hidden items-center justify-center px-3">
+              <div className="flex items-center justify-center px-2 md:hidden">
                 <span className="text-xs font-medium text-foreground">
                   {paginaActual} / {totalPaginas}
                 </span>
               </div>
-              
+
               {/* Página siguiente */}
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => onCambiarPagina(paginaActual + 1)}
                 disabled={paginaActual >= totalPaginas || loading}
-                className="h-8 px-3"
+                className="h-9 px-3 sm:h-8"
               >
                 <span className="text-xs">Siguiente ›</span>
               </Button>
@@ -544,7 +547,7 @@ export function HistorialRegistros({
                 variant="outline"
                 onClick={() => onCambiarPagina(totalPaginas)}
                 disabled={paginaActual >= totalPaginas || loading}
-                className="h-8 w-8 p-0"
+                className="h-9 w-9 p-0 sm:h-8 sm:w-8"
                 title="Última página"
               >
                 <span className="text-xs">››</span>

@@ -7,7 +7,7 @@
 import type { LoginResponse, ForgotPasswordResponse, User } from './types/auth'
 
 // Usuarios de prueba
-const MOCK_USERS: User[] = [
+const MOCK_USERS: (User & { id: string })[] = [
   {
     id: '1',
     username: 'admin',
